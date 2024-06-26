@@ -31,18 +31,17 @@ while [[ "$1" != "" ]]; do
     -h | --help ) usage ;;
     * ) usage ;;
   esac
-  # shift
 done
 
 # Return empty string if it does not exist
-does_image_exist() {
+does_celestia_node_image_exist() {
   docker images -q ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 2> /dev/null
 }
 
 # wait until a container is running
 # $1 is the container name
 wait_for() {
-  while [ -z "$(docker inspect -f {{.State.Running}} $1)" ]; do
+  while [ $(docker inspect -f {{.State.Running}} $1) = "false" ]; do
     sleep 0.1;
   done
 }
@@ -74,17 +73,25 @@ run_docker_containers() {
 # Create zksync_local database
 create_zksync_local_db() {
   echo "Creating zksync_local database..."
-  docker exec -i "$(docker ps -q -f name=postgres)" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE zksync_local;" <<< "notsecurepassword"
-  echo "zksync_local database created."
+
+  if [ "$(docker exec -i "$(docker ps -q -f name=postgres)" psql -XtA -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "SELECT 1 FROM pg_database WHERE datname='zksync_local';")" = '1' ]
+  then
+    echo "Database already exists, ignoring"
+  else
+    docker exec -i "$(docker ps -q -f name=postgres)" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE zksync_local;" <<< "notsecurepassword"
+    echo "zksync_local database created."
+  fi
 }
 
 # Run Celestia node
 run_celestia_node() {
-  echo "Running Celestia node..."
-
-  if [ -n "$(does_image_exist)" ]; then
-    docker restart celestia-node
+  if [ -n "$(does_celestia_node_image_exist)" ]; then
+    if [ $(docker inspect -f "{{.State.Running}}" "celestia-node") = "false" ]; then
+      echo "Starting Celestia node..."
+      docker start celestia-node
+    fi
   else
+    echo "Running Celestia node..."
     docker run -d --network host -e NODE_TYPE=$NODE_TYPE -e P2P_NETWORK=$NETWORK \
       --name celestia-node \
       -v ./volumes/celestia:/home/celestia \
@@ -118,7 +125,7 @@ run_database_migrations() {
   echo "Running database migrations..."
   cargo install sqlx-cli
   export DATABASE_URL=postgres://postgres:notsecurepassword@127.0.0.1:5432/zksync_local
-  sqlx migrate run --source ../core/lib/dal/migrations
+  sqlx migrate run --source ./core/lib/dal/migrations
   echo "Database migrations completed."
 }
 
@@ -143,10 +150,10 @@ run_docker_containers
 # Run Celestia node in the background
 run_celestia_node
 
-# Wait for Docker containers and Celestia node to start
-wait_for celestia-node
+# Wait for these containers to start
 wait_for via-server-reth-1
 wait_for via-server-postgres-1
+wait_for celestia-node
 
 create_zksync_local_db
 
@@ -162,4 +169,11 @@ print_zksync_server_message
 # Run zksync_server with only da_dispatcher enabled
 echo "Running zksync_server with only da_dispatcher enabled..."
 
-cargo run --bin zksync_server -- --genesis-path configs/genesis.yaml --wallets-path configs/wallets.yaml --config-path configs/general.yaml --secrets-path configs/secrets.yaml --contracts-config-path configs/contracts.yaml --use-node-framework --components da_dispatcher
+cargo run --bin zksync_server -- \
+  --genesis-path ./demo/configs/genesis.yaml \
+  --wallets-path ./demo/configs/wallets.yaml \
+  --config-path ./demo/configs/general.yaml \
+  --secrets-path ./demo/configs/secrets.yaml \
+  --contracts-config-path ./demo/configs/contracts.yaml \
+  --use-node-framework \
+  --components da_dispatcher
