@@ -74,6 +74,9 @@ run_docker_containers() {
 create_zksync_local_db() {
   echo "Creating zksync_local database..."
 
+  # postgres does not support IF EXISTS statement for create database,
+  # so we have to do this ugly montruosity to avoid an error.
+  # this checks if the database already exists.
   if [ "$(docker exec -i "$(docker ps -q -f name=postgres)" psql -XtA -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "SELECT 1 FROM pg_database WHERE datname='zksync_local';")" = '1' ]
   then
     echo "Database already exists, ignoring"
@@ -83,7 +86,7 @@ create_zksync_local_db() {
   fi
 }
 
-# Run Celestia node
+# Run Celestia node, if not running
 run_celestia_node() {
   if [ -n "$(does_celestia_node_image_exist)" ]; then
     if [ $(docker inspect -f "{{.State.Running}}" "celestia-node") = "false" ]; then
@@ -98,16 +101,16 @@ run_celestia_node() {
       ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 \
       celestia $NODE_TYPE start --core.ip $RPC_URL --p2p.network $NETWORK
   fi
-
-  echo "Celestia node is running."
 }
 
 # Get node address and show to user
 get_node_address() {
   echo "Getting the node address..."
   NODE_ADDRESS=$(docker exec celestia-node celestia state account-address | grep celestia | sed s/'  "result": '//g)
+  echo "------ ⚠️Important! ------"
   echo "Node address: $NODE_ADDRESS"
   echo "Please send some TIA tokens in Arabica devnet to the above address to enable it."
+  echo "----------------------"
   read -r -p "Press Enter to continue to the next step..."
 }
 
