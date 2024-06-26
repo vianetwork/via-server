@@ -5,12 +5,17 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
-NETWORK=arabica
-NODE_TYPE=light
-RPC_URL=validator-2.celestia-arabica-11.com
-CELESTIA_CLIENT_API_NODE_URL=ws://localhost:26658
-CELESTIA_CLIENT_API_PRIVATE_KEY="0xf55baf7c0e4e33b1d78fbf52f069c426bc36cff1aceb9bc8f45d14c07f034d73"
-NODE_STORE=$HOME/.celestia-light-arabica-11
+# make sure we run this script in the root folder,
+# and not on the user's pwd.
+script_dir="$(dirname "$(readlink -f "$0")")"
+cd "${script_dir}/.."
+
+export NETWORK=arabica
+export NODE_TYPE=light
+export RPC_URL=validator-2.celestia-arabica-11.com
+export CELESTIA_CLIENT_API_NODE_URL=ws://localhost:26658
+export CELESTIA_CLIENT_API_PRIVATE_KEY="0xf55baf7c0e4e33b1d78fbf52f069c426bc36cff1aceb9bc8f45d14c07f034d73"
+export NODE_STORE=$HOME/.celestia-light-arabica-11
 
 # Function to print script usage
 usage() {
@@ -26,14 +31,26 @@ while [[ "$1" != "" ]]; do
     -h | --help ) usage ;;
     * ) usage ;;
   esac
-  shift
+  # shift
 done
+
+# Return empty string if it does not exist
+does_image_exist() {
+  docker images -q ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 2> /dev/null
+}
+
+# wait until a container is running
+# $1 is the container name
+wait_for() {
+  while [ -z "$(docker inspect -f {{.State.Running}} $1)" ]; do
+    sleep 0.1;
+  done
+}
 
 # Create directories for volumes
 create_directories() {
   echo "Creating directories for volumes..."
-  mkdir -p ../volumes/reth/data
-  mkdir -p ../volumes/{postgres,celestia}
+  mkdir -p ./volumes/{postgres,celestia,reth/data}
   echo "Directories created."
 }
 
@@ -50,14 +67,14 @@ check_docker() {
 # Run Docker containers in detached mode
 run_docker_containers() {
   echo "Running reth and postgres services in detached mode..."
-  docker-compose up -d reth postgres
+  docker-compose up -d reth postgres &
   echo "reth and postgres services are now running in detached mode."
 }
 
 # Create zksync_local database
 create_zksync_local_db() {
   echo "Creating zksync_local database..."
-  docker exec -i $(docker ps -q -f name=postgres) psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE zksync_local;" <<< "notsecurepassword"
+  docker exec -i "$(docker ps -q -f name=postgres)" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE zksync_local;" <<< "notsecurepassword"
   echo "zksync_local database created."
 }
 
@@ -65,11 +82,15 @@ create_zksync_local_db() {
 run_celestia_node() {
   echo "Running Celestia node..."
 
-  docker run --network host -e NODE_TYPE=$NODE_TYPE -e P2P_NETWORK=$NETWORK \
-    --name celestia-node \
-    -v $(pwd)/../volumes/celestia:/home/celestia \
-    ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 \
-    celestia $NODE_TYPE start --core.ip $RPC_URL --p2p.network $NETWORK
+  if [ -n "$(does_image_exist)" ]; then
+    docker restart celestia-node
+  else
+    docker run -d --network host -e NODE_TYPE=$NODE_TYPE -e P2P_NETWORK=$NETWORK \
+      --name celestia-node \
+      -v ./volumes/celestia:/home/celestia \
+      ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 \
+      celestia $NODE_TYPE start --core.ip $RPC_URL --p2p.network $NETWORK
+  fi
 
   echo "Celestia node is running."
 }
@@ -80,7 +101,7 @@ get_node_address() {
   NODE_ADDRESS=$(docker exec celestia-node celestia state account-address | grep celestia | sed s/'  "result": '//g)
   echo "Node address: $NODE_ADDRESS"
   echo "Please send some TIA tokens in Arabica devnet to the above address to enable it."
-  read -p "Press Enter to continue to the next step..."
+  read -r -p "Press Enter to continue to the next step..."
 }
 
 # Extract and export auth token
@@ -112,18 +133,20 @@ print_zksync_server_message() {
 create_directories
 
 # Prompt the user to continue
-read -p "Press Enter to continue if Docker is running and the host network feature is enabled..."
+read -r -p "Press Enter to continue if Docker is running and the host network feature is enabled..."
 
 check_docker
 
 # Run Docker containers in the background
-run_docker_containers &
+run_docker_containers
 
 # Run Celestia node in the background
-run_celestia_node &
+run_celestia_node
 
 # Wait for Docker containers and Celestia node to start
-# wait
+wait_for celestia-node
+wait_for via-server-reth-1
+wait_for via-server-postgres-1
 
 create_zksync_local_db
 
