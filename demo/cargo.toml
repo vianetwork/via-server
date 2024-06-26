@@ -1,0 +1,19 @@
+[package]
+name = "dummy-data-generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+zksync_basic_types = { git = "https://github.com/vianetwork/via-server.git", branch = "feat-validium-with-da" }
+zksync_types = { git = "https://github.com/vianetwork/via-server.git", branch = "feat-validium-with-da" }
+sqlx = { version = "0.6", features = ["postgres", "runtime-tokio-native-tls", "macros", "json"] }
+serde = "1"
+serde_json = "1"
+serde_with = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+dotenv = "0.15.0"
+hex = "0.4"
+
+
