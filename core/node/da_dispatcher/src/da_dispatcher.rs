@@ -1,4 +1,4 @@
-use std::{future::Future, time::Duration};
+use std::{future::Future, iter, time::Duration};
 
 use anyhow::Context;
 use chrono::{NaiveDateTime, Utc};
@@ -32,6 +32,7 @@ impl DataAvailabilityDispatcher {
     }
 
     pub async fn run(self, mut stop_receiver: watch::Receiver<bool>) -> anyhow::Result<()> {
+        let mut iterations_counter = 0; 
         loop {
             if *stop_receiver.borrow() {
                 break;
@@ -39,9 +40,11 @@ impl DataAvailabilityDispatcher {
 
             tokio::join!(
                 async {
+                    println!("DA Dispatcher Iteration Counter: {}", iterations_counter);
                     if let Err(err) = self.dispatch().await {
                         tracing::error!("dispatch error {err:?}");
                     }
+                    
                 },
                 async {
                     if let Err(err) = self.poll_for_inclusion().await {
@@ -70,6 +73,12 @@ impl DataAvailabilityDispatcher {
             .get_ready_for_da_dispatch_l1_batches(self.config.max_rows_to_dispatch() as usize)
             .await?;
         drop(conn);
+
+        let mut should_print_info : bool = false;
+
+        if !batches.is_empty() {
+            should_print_info = true;
+        }
 
         for batch in batches {
             let dispatch_latency = METRICS.blob_dispatch_latency.start();
@@ -110,6 +119,11 @@ impl DataAvailabilityDispatcher {
                 batch.pubdata.len(),
             );
         }
+
+        if should_print_info {
+            println!("Please check https://arabica.celenium.io/ and data_availability table in DB for the dispatched blobs.");
+        }
+
 
         Ok(())
     }
