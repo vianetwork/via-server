@@ -5,6 +5,13 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+NETWORK=arabica
+NODE_TYPE=light
+RPC_URL=validator-2.celestia-arabica-11.com
+CELESTIA_CLIENT_API_NODE_URL=ws://localhost:26658
+CELESTIA_CLIENT_API_PRIVATE_KEY="0xf55baf7c0e4e33b1d78fbf52f069c426bc36cff1aceb9bc8f45d14c07f034d73"
+NODE_STORE=$HOME/.celestia-light-arabica-11
+
 # Function to print script usage
 usage() {
   echo "Usage: $0 [options]"
@@ -26,8 +33,7 @@ done
 create_directories() {
   echo "Creating directories for volumes..."
   mkdir -p ../volumes/reth/data
-  mkdir -p ../volumes/postgres
-  mkdir -p ../volumes/celestia
+  mkdir -p ../volumes/{postgres,celestia}
   echo "Directories created."
 }
 
@@ -58,9 +64,6 @@ create_zksync_local_db() {
 # Run Celestia node
 run_celestia_node() {
   echo "Running Celestia node..."
-  NETWORK=arabica
-  NODE_TYPE=light
-  RPC_URL=127.0.0.1
 
   docker run --network host -e NODE_TYPE=$NODE_TYPE -e P2P_NETWORK=$NETWORK \
     --name celestia-node \
@@ -74,7 +77,7 @@ run_celestia_node() {
 # Get node address and show to user
 get_node_address() {
   echo "Getting the node address..."
-  NODE_ADDRESS=$(docker exec celestia-node cel-key list --node.type light --p2p.network arabica | grep address | awk '{print $2}')
+  NODE_ADDRESS=$(docker exec celestia-node celestia state account-address | grep celestia | sed s/'  "result": '//g)
   echo "Node address: $NODE_ADDRESS"
   echo "Please send some TIA tokens in Arabica devnet to the above address to enable it."
   read -p "Press Enter to continue to the next step..."
@@ -83,7 +86,7 @@ get_node_address() {
 # Extract and export auth token
 extract_auth_token() {
   echo "Extracting auth token..."
-  CELESTIA_CLIENT_AUTH_TOKEN=$(docker exec celestia-node celestia light auth admin --p2p.network arabica)
+  CELESTIA_CLIENT_AUTH_TOKEN=$(docker exec celestia-node celestia $NODE_TYPE auth admin --p2p.network $NETWORK)
   export CELESTIA_CLIENT_AUTH_TOKEN
   export NODE_ADDRESS
   echo "Auth token (CELESTIA_CLIENT_AUTH_TOKEN) and node address (NODE_ADDRESS) have been exported to the terminal."
@@ -120,7 +123,7 @@ run_docker_containers &
 run_celestia_node &
 
 # Wait for Docker containers and Celestia node to start
-wait
+# wait
 
 create_zksync_local_db
 
@@ -135,12 +138,5 @@ print_zksync_server_message
 
 # Run zksync_server with only da_dispatcher enabled
 echo "Running zksync_server with only da_dispatcher enabled..."
-export NETWORK=arabica
-export NODE_TYPE=light
-export RPC_URL=validator-2.celestia-arabica-11.com
-export CELESTIA_CLIENT_API_NODE_URL=ws://localhost:26658
-export CELESTIA_CLIENT_API_PRIVATE_KEY="0xf55baf7c0e4e33b1d78fbf52f069c426bc36cff1aceb9bc8f45d14c07f034d73"
-export NODE_STORE=$HOME/.celestia-light-arabica-11
 
 cargo run --bin zksync_server -- --genesis-path configs/genesis.yaml --wallets-path configs/wallets.yaml --config-path configs/general.yaml --secrets-path configs/secrets.yaml --contracts-config-path configs/contracts.yaml --use-node-framework --components da_dispatcher
-
