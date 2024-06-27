@@ -14,10 +14,6 @@ use hex;
 
 use tokio;
 
-
-
-
-
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     println!("Dummy Data Insertion in L1Batch Table");

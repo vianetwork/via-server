@@ -1,0 +1,42 @@
+version: '3.2'
+services:
+  reth:
+    restart: always
+    image: "ghcr.io/paradigmxyz/reth:v0.2.0-beta.2"
+    volumes:
+      - type: bind
+        source: ./volumes/reth/data
+        target: /rethdata
+      - type: bind
+        source: ./etc/reth/chaindata
+        target: /chaindata
+
+    command: node --dev --datadir /rethdata --http --http.addr 0.0.0.0 --http.port 8545  --dev.block-time 300ms --chain /chaindata/reth_config
+    ports:
+      - 127.0.0.1:8545:8545
+
+  postgres:
+    image: "postgres:14"
+    command: postgres -c 'max_connections=200'
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - type: bind
+        source: ./volumes/postgres
+        target: /var/lib/postgresql/data
+    environment:
+      # We bind only to 127.0.0.1, so setting insecure password is acceptable here
+      - POSTGRES_PASSWORD=notsecurepassword
+
+  celestia-node:
+    image: "ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2"
+    network_mode: "host"
+    volumes:
+      - type: bind
+        source: ./volumes/celestia
+        target: /home/celestia
+    command: celestia light start --core.ip validator-2.celestia-arabica-11.com --p2p.network arabica
+    environment:
+      - NODE_TYPE=light
+      - P2P_NETWORK=arabica
+      

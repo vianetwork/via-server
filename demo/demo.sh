@@ -2,20 +2,23 @@
 
 # Demo Script for Project Feature
 
+# Define colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+GREEN_BOLD='\033[1;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
 # Exit immediately if a command exits with a non-zero status.
 set -e
-
-# make sure we run this script in the root folder,
-# and not on the user's pwd.
-script_dir="$(dirname "$(readlink -f "$0")")"
-cd "${script_dir}/.."
 
 export NETWORK=arabica
 export NODE_TYPE=light
 export RPC_URL=validator-2.celestia-arabica-11.com
 export CELESTIA_CLIENT_API_NODE_URL=ws://localhost:26658
-export CELESTIA_CLIENT_API_PRIVATE_KEY="0xf55baf7c0e4e33b1d78fbf52f069c426bc36cff1aceb9bc8f45d14c07f034d73"
+export CELESTIA_CLIENT_API_PRIVATE_KEY=""
 export NODE_STORE=$HOME/.celestia-light-arabica-11
+export DATABASE_URL=postgres://postgres:notsecurepassword@127.0.0.1:5432/zksync_local
 
 # Function to print script usage
 usage() {
@@ -33,9 +36,12 @@ while [[ "$1" != "" ]]; do
   esac
 done
 
-# Return empty string if it does not exist
-does_celestia_node_image_exist() {
-  docker images -q ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 2> /dev/null
+# Check if VIA_HOME environment variable is set
+check_via_home() {
+  if [[ -z "${VIA_HOME}" ]]; then
+    echo -e "${RED}Environment variable VIA_HOME is not set. Make sure it's set and pointing to the root of this repository.${NC}"
+    exit 1
+  fi
 }
 
 # wait until a container is running
@@ -50,7 +56,7 @@ wait_for() {
 create_directories() {
   echo "Creating directories for volumes..."
   mkdir -p ./volumes/{postgres,celestia,reth/data}
-  echo "Directories created."
+  echo -e "${GREEN}Volume directories created.${NC}"
 }
 
 # Check if Docker is running
@@ -58,88 +64,85 @@ check_docker() {
   echo "Checking if Docker is running and the host network feature is enabled..."
   docker info > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    echo "Docker does not seem to be running. Please start Docker and ensure the host network feature is enabled."
+    echo -e "${RED}Docker does not seem to be running. Please start Docker and ensure the host network feature is enabled.${NC}"
     exit 1
   fi
 }
 
 # Run Docker containers in detached mode
 run_docker_containers() {
-  echo "Running reth and postgres services in detached mode..."
-  docker-compose up -d reth postgres &
-  echo "reth and postgres services are now running in detached mode."
+  echo "Running reth, postgres and celestia-node services in detached mode..."
+  docker-compose -f docker-compose-celestia-demo.yml up -d &
+  echo -e "${GREEN}reth, postgres and celestia-node services are now running in detached mode.${NC}"
 }
 
 # Create zksync_local database
 create_zksync_local_db() {
   echo "Creating zksync_local database..."
-
   # postgres does not support IF EXISTS statement for create database,
   # so we have to do this ugly montruosity to avoid an error.
   # this checks if the database already exists.
   if [ "$(docker exec -i "$(docker ps -q -f name=postgres)" psql -XtA -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "SELECT 1 FROM pg_database WHERE datname='zksync_local';")" = '1' ]
   then
-    echo "Database already exists, ignoring"
+    echo -e "${YELLOW}Database already exists, ignoring${NC}"
   else
     docker exec -i "$(docker ps -q -f name=postgres)" psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE zksync_local;" <<< "notsecurepassword"
-    echo "zksync_local database created."
+    echo -e "${GREEN_BOLD}zksync_local${GREEN} database created.${NC} ✔"
   fi
 }
 
-# Run Celestia node, if not running
-run_celestia_node() {
-  if [ -n "$(does_celestia_node_image_exist)" ]; then
-    if [ $(docker inspect -f "{{.State.Running}}" "celestia-node") = "false" ]; then
-      echo "Starting Celestia node..."
-      docker start celestia-node
-    fi
-  else
-    echo "Running Celestia node..."
-    docker run -d --network host -e NODE_TYPE=$NODE_TYPE -e P2P_NETWORK=$NETWORK \
-      --name celestia-node \
-      -v ./volumes/celestia:/home/celestia \
-      ghcr.io/celestiaorg/celestia-node:v0.14.0-rc2 \
-      celestia $NODE_TYPE start --core.ip $RPC_URL --p2p.network $NETWORK
-  fi
-}
-
-# Get node address and show to user
+# Get and export Celestia node address
 get_node_address() {
   echo "Getting the node address..."
-  NODE_ADDRESS=$(docker exec celestia-node celestia state account-address | grep celestia | sed s/'  "result": '//g)
+  NODE_ADDRESS=$(docker exec $(docker ps -q -f name=celestia-node) celestia state account-address | grep celestia | sed s/'  "result": '//g)
+  export NODE_ADDRESS
+  echo -e "${GREEN}Celestia Node Address: $NODE_ADDRESS${NC}"
   echo "------ ⚠️Important! ------"
-  echo "Node address: $NODE_ADDRESS"
-  echo "Please send some TIA tokens in Arabica devnet to the above address to enable it."
-  echo "----------------------"
+  echo -e "${YELLOW}Please send some TIA tokens in Arabica devnet to the above address to enable it."
+  echo -e "Check Arabica devnet faucet documentation: https://docs.celestia.org/nodes/arabica-devnet#arabica-devnet-faucet,"
+  echo -e "or follow these steps to transfer tokens from another account https://docs.celestia.org/developers/node-tutorial#transfer-balance-of-utia-to-another-account.${NC}"
   read -r -p "Press Enter to continue to the next step..."
 }
 
 # Extract and export auth token
 extract_auth_token() {
   echo "Extracting auth token..."
-  CELESTIA_CLIENT_AUTH_TOKEN=$(docker exec celestia-node celestia $NODE_TYPE auth admin --p2p.network $NETWORK)
+  CELESTIA_CLIENT_AUTH_TOKEN=$(docker exec $(docker ps -q -f name=celestia-node) celestia $NODE_TYPE auth admin --p2p.network $NETWORK)
   export CELESTIA_CLIENT_AUTH_TOKEN
-  export NODE_ADDRESS
-  echo "Auth token (CELESTIA_CLIENT_AUTH_TOKEN) and node address (NODE_ADDRESS) have been exported to the terminal."
+  echo -e "${GREEN}Celestia Client Auth Token: $CELESTIA_CLIENT_AUTH_TOKEN${NC}"
 }
 
-# Run database migrations
 run_database_migrations() {
   echo "Running database migrations..."
-  cargo install sqlx-cli
-  export DATABASE_URL=postgres://postgres:notsecurepassword@127.0.0.1:5432/zksync_local
+  cargo install sqlx-cli --version 0.7.3
   sqlx migrate run --source ./core/lib/dal/migrations
-  echo "Database migrations completed."
+  echo -e "${GREEN}Database migrations completed.${NC}"
 }
 
 # Print message about running zksync_server
-print_zksync_server_message() {
-  echo "In the next step, we are running the zksync_server with only da_dispatcher enabled, and it gets run with the help of node_framework."
-  echo "Please wait for the code to build and run. After it is running successfully, run the dummy_data.sh script in another terminal."
-  echo "Then return to this terminal to see the result of the da_dispatcher's work that sent the dummy data from the L1 Batch table to Celestia."
+print_via_server_message() {
+  echo -e "${YELLOW}In the next step, we are running the zksync_server with only da_dispatcher enabled, and it gets run with the help of node_framework."
+  echo -e "Please wait for the code to build and run. After it is running successfully, run the dummy_data.sh script in another terminal."
+  echo -e "Then return to this terminal to see the result of the da_dispatcher's work that sent the dummy data from the L1 Batch table to Celestia.${NC}"
 }
 
-# Execute the functions
+# Run zksync_server with only da_dispatcher enabled
+run_via_server() {
+  echo "Running zksync_server with only da_dispatcher enabled..."
+
+  cargo run --bin zksync_server -- \
+    --genesis-path ./demo/configs/genesis.yaml \
+    --wallets-path ./demo/configs/wallets.yaml \
+    --config-path ./demo/configs/general.yaml \
+    --secrets-path ./demo/configs/secrets.yaml \
+    --contracts-config-path ./demo/configs/contracts.yaml \
+    --use-node-framework \
+    --components da_dispatcher
+}
+
+check_via_home
+cd $VIA_HOME
+
 create_directories
 
 # Prompt the user to continue
@@ -150,13 +153,11 @@ check_docker
 # Run Docker containers in the background
 run_docker_containers
 
-# Run Celestia node in the background
-run_celestia_node
-
-# Wait for these containers to start
-wait_for via-server-reth-1
-wait_for via-server-postgres-1
-wait_for celestia-node
+# # Wait for Docker containers to start
+# wait_for via-server-celestia-node-1
+# wait_for via-server-reth-1
+# wait_for via-server-postgres-1
+sleep 1
 
 create_zksync_local_db
 
@@ -166,17 +167,6 @@ extract_auth_token
 
 run_database_migrations
 
-# Print message about running zksync_server
-print_zksync_server_message
+print_via_server_message
 
-# Run zksync_server with only da_dispatcher enabled
-echo "Running zksync_server with only da_dispatcher enabled..."
-
-cargo run --bin zksync_server -- \
-  --genesis-path ./demo/configs/genesis.yaml \
-  --wallets-path ./demo/configs/wallets.yaml \
-  --config-path ./demo/configs/general.yaml \
-  --secrets-path ./demo/configs/secrets.yaml \
-  --contracts-config-path ./demo/configs/contracts.yaml \
-  --use-node-framework \
-  --components da_dispatcher
+run_via_server

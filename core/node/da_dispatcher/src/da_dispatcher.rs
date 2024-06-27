@@ -32,7 +32,7 @@ impl DataAvailabilityDispatcher {
     }
 
     pub async fn run(self, mut stop_receiver: watch::Receiver<bool>) -> anyhow::Result<()> {
-        let mut iterations_counter = 0; 
+        let mut iterations_counter = 0;
         loop {
             if *stop_receiver.borrow() {
                 break;
@@ -44,7 +44,6 @@ impl DataAvailabilityDispatcher {
                     if let Err(err) = self.dispatch().await {
                         tracing::error!("dispatch error {err:?}");
                     }
-                    
                 },
                 async {
                     if let Err(err) = self.poll_for_inclusion().await {
@@ -74,7 +73,7 @@ impl DataAvailabilityDispatcher {
             .await?;
         drop(conn);
 
-        let mut should_print_info : bool = false;
+        let mut should_print_info: bool = false;
 
         if !batches.is_empty() {
             should_print_info = true;
@@ -123,7 +122,6 @@ impl DataAvailabilityDispatcher {
         if should_print_info {
             println!("Please check https://arabica.celenium.io/ and data_availability table in DB for the dispatched blobs.");
         }
-
 
         Ok(())
     }

@@ -47,7 +47,8 @@ impl DataAvailabilityClient for CelestiaClient {
         let my_namespace = Namespace::new_v0(&[0xDA, 0xAD, 0xBE, 0xEF]).expect("Invalid namespace");
         let blob = Blob::new(my_namespace, data).expect("Failed to create a blob");
 
-        let result = self.inner
+        let result = self
+            .inner
             .blob_submit(&[blob], GasPrice::default())
             .await
             .map_err(|error| types::DAError {
@@ -57,7 +58,7 @@ impl DataAvailabilityClient for CelestiaClient {
             .map(|blob_id| types::DispatchResponse {
                 blob_id: format!("{blob_id}"),
             });
-        
+
         println!("Dispatched blob: {:?}", result);
         return result;
     }
