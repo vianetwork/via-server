@@ -32,7 +32,6 @@ impl DataAvailabilityDispatcher {
     }
 
     pub async fn run(self, mut stop_receiver: watch::Receiver<bool>) -> anyhow::Result<()> {
-        let mut iterations_counter = 0;
         loop {
             if *stop_receiver.borrow() {
                 break;
@@ -40,7 +39,6 @@ impl DataAvailabilityDispatcher {
 
             tokio::join!(
                 async {
-                    println!("DA Dispatcher Iteration Counter: {}", iterations_counter);
                     if let Err(err) = self.dispatch().await {
                         tracing::error!("dispatch error {err:?}");
                     }

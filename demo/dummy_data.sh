@@ -2,6 +2,10 @@
 
 # Dummy Data Script
 
+# Define colors
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
@@ -13,4 +17,4 @@ cd "$(dirname "$0")"
 # Run the cargo run command
 echo "Running cargo run to execute the dummy data script..."
 cargo run
-echo "Dummy data script executed successfully."
+echo -e "${GREEN}Dummy data script executed successfully.${NC}"

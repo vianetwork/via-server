@@ -5,7 +5,7 @@ use zksync_types::circuit::CircuitStatistic;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Error;
 
-use serde_json::Value;
+use serde_json;
 
 use std::env;
 use std::fs::File;
@@ -26,10 +26,11 @@ async fn main() -> Result<(), Error> {
         "data/pubdata_input_5.txt",
         ];
     
-    for (i, file_path) in files_path.iter().enumerate() {
+    for file_path in files_path.iter() {
         let pubdata_input = read_pubdata_from_file(file_path)?;
-        let block_number: u32 = i as u32 + 1;
-        insert_mock_l1_batch( block_number, pubdata_input).await?;
+        let id_offset = get_l1_batch_count().await?;
+        let block_number: u32 = id_offset as u32 + 1;
+        insert_mock_l1_batch(block_number, pubdata_input).await?;
     }
 
     Ok(())
@@ -69,6 +70,19 @@ async fn insert_mock_l1_batch(batch_number: u32, pub_data: Vec<u8>) -> Result<()
     .await
 }
 
+async fn get_l1_batch_count() -> Result<i64, Error> {
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+
+    let result = sqlx::query!("SELECT COUNT(*) FROM l1_batches")
+        .fetch_one(&pool)
+        .await?;
+
+    Ok(result.count.unwrap_or(0))
+}
 
 async fn insert_l1_batch(
     header: &L1BatchHeader,

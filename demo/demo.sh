@@ -94,11 +94,12 @@ create_zksync_local_db() {
 # Get and export Celestia node address
 get_node_address() {
   echo "Getting the node address..."
-  NODE_ADDRESS=$(docker exec $(docker ps -q -f name=celestia-node) celestia state account-address | grep celestia | sed s/'  "result": '//g)
+  NODE_ADDRESS=$(docker exec $(docker ps -q -f name=celestia-node) celestia state account-address | jq -r '.result')
+  BALANCE=$(docker exec $(docker ps -q -f name=celestia-node) celestia state balance-for-address $NODE_ADDRESS | jq -r '.result.amount')
   export NODE_ADDRESS
-  echo -e "${GREEN}Celestia Node Address: $NODE_ADDRESS${NC}"
-  echo "------ ⚠️Important! ------"
-  echo -e "${YELLOW}Please send some TIA tokens in Arabica devnet to the above address to enable it."
+  echo -e "${GREEN}Celestia Node Address: $NODE_ADDRESS. Account balance: $BALANCE utia${NC}"
+  echo "------ ⚠️ Important ------"
+  echo -e "${YELLOW}Please make sure you have some TIA tokens in the account to proceed with the next steps."
   echo -e "Check Arabica devnet faucet documentation: https://docs.celestia.org/nodes/arabica-devnet#arabica-devnet-faucet,"
   echo -e "or follow these steps to transfer tokens from another account https://docs.celestia.org/developers/node-tutorial#transfer-balance-of-utia-to-another-account.${NC}"
   read -r -p "Press Enter to continue to the next step..."
@@ -157,7 +158,7 @@ run_docker_containers
 # wait_for via-server-celestia-node-1
 # wait_for via-server-reth-1
 # wait_for via-server-postgres-1
-sleep 1
+sleep 3
 
 create_zksync_local_db
 
