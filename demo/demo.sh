@@ -158,7 +158,7 @@ run_docker_containers
 # wait_for via-server-celestia-node-1
 # wait_for via-server-reth-1
 # wait_for via-server-postgres-1
-sleep 3
+sleep 5
 
 create_zksync_local_db
 
