@@ -24,3 +24,10 @@ jsonrpsee = { workspace = true, features = [
     "client",
     "macros",
 ] }
+bitcoin = "0.32.2"
+bitcoincore-rpc = "0.19.0"
+secp256k1 = "0.29.0"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
