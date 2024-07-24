@@ -9,10 +9,10 @@ use bitcoin::script::{Builder as ScriptBuilder, PushBytesBuf};
 use bitcoin::secp256k1::{rand, Message, Secp256k1, SecretKey, Signing, Verification};
 use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
 
-use bitcoin::taproot::TaprootBuilder;
+use bitcoin::taproot::{ControlBlock, LeafVersion, TaprootBuilder};
 use bitcoin::{
     transaction, Address, Amount, CompressedPublicKey, Network, OutPoint, PrivateKey, ScriptBuf,
-    Sequence, Transaction, TxIn, TxOut, Txid, WPubkeyHash, Witness,
+    Sequence, TapLeafHash, Transaction, TxIn, TxOut, Txid, WPubkeyHash, Witness,
 };
 use bitcoincore_rpc::RawTx;
 
@@ -74,11 +74,13 @@ fn reveal_transaction_output_fee(wpkh: &WPubkeyHash) -> (OutPoint, TxOut) {
 fn reveal_transaction_output_p2tr<C: Verification>(
     secp: &Secp256k1<C>,
     internal_key: UntweakedPublicKey,
-) -> (OutPoint, TxOut) {
+) -> (OutPoint, TxOut, ScriptBuf, ControlBlock) {
     let serelized_pubkey = internal_key.serialize();
     let mut encoded_pubkey = PushBytesBuf::with_capacity(serelized_pubkey.len());
     encoded_pubkey.extend_from_slice(&serelized_pubkey).ok();
 
+    let data = b"***Hello From Via Inscriber: try 1***";
+    println!("data: {}", data.raw_hex());
     // The inscription output with using Taproot approach:
     let taproot_script = ScriptBuilder::new()
         .push_slice(encoded_pubkey.as_push_bytes())
@@ -99,13 +101,19 @@ fn reveal_transaction_output_p2tr<C: Verification>(
         .finalize(&secp, internal_key)
         .expect("taproot finalize should work");
 
+    let control_block = taproot_spend_info.control_block(
+        &(
+            taproot_script.clone(),
+            LeafVersion::TapScript,
+        )
+    ).unwrap();
     // Create the Taproot output script
     let taproot_address = Address::p2tr_tweaked(taproot_spend_info.output_key(), Network::Testnet);
     println!("taproot address: {}", taproot_address);
 
     let txid = "9d2d28809deff9dc156126ad9498ba43d383c0f62284c9cce7eff9c65d170b06";
     let out_point = OutPoint {
-        txid: Txid::from_str(&txid).unwrap(), 
+        txid: Txid::from_str(&txid).unwrap(),
         vout: 1,
     };
 
@@ -114,7 +122,7 @@ fn reveal_transaction_output_p2tr<C: Verification>(
         script_pubkey: taproot_address.script_pubkey(),
     };
 
-    (out_point, utxo)
+    (out_point, utxo, taproot_script, control_block)
 }
 
 #[allow(dead_code)]
@@ -228,7 +236,7 @@ pub fn process_inscribe() {
 
     let input = TxIn {
         previous_output: fee_input.0,     // The dummy output we are spending.
-        script_sig: ScriptBuf::default(),    // For a p2wpkh script_sig is empty.
+        script_sig: ScriptBuf::default(), // For a p2wpkh script_sig is empty.
         sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
         witness: Witness::default(), // Filled in after signing.
     };
@@ -275,7 +283,6 @@ pub fn process_inscribe() {
     let msg = Message::from(fee_input_sighash);
     let fee_input_signature = secp.sign_ecdsa(&msg, &sk);
 
-
     // Update the witness stack.
     let fee_input_signature = bitcoin::ecdsa::Signature {
         signature: fee_input_signature,
@@ -285,25 +292,33 @@ pub fn process_inscribe() {
 
     *sighasher.witness_mut(fee_input_index).unwrap() = Witness::p2wpkh(&fee_input_signature, &pk);
 
-
     // **Sign the reveal input**
 
-    let sighash_type = TapSighashType::NonePlusAnyoneCanPay;
-    let prevouts = reveal_input.1;
-    let prevouts = Prevouts::One(reveal_input_index, prevouts);
-
+    let sighash_type = TapSighashType::All;
+    let prevouts = [fee_input.1, reveal_input.1];
+    let prevouts = Prevouts::All(&prevouts);
 
     let reveal_input_sighash = sighasher
-        .taproot_key_spend_signature_hash(reveal_input_index, &prevouts, sighash_type)
+        .taproot_script_spend_signature_hash(
+            reveal_input_index,
+            &prevouts,
+            TapLeafHash::from_script(&reveal_input.2, LeafVersion::TapScript),
+            sighash_type,
+        )
         .expect("failed to construct sighash");
-
-        print!("*****Problem is in here*****");
-
 
     // Sign the sighash using the secp256k1 library (exported by rust-bitcoin).
     let tweaked: TweakedKeypair = keypair.tap_tweak(&secp, None);
     let msg = Message::from_digest(reveal_input_sighash.to_byte_array());
-    let reveal_input_signature = secp.sign_schnorr(&msg, &tweaked.to_inner());
+    let reveal_input_signature = secp.sign_schnorr_no_aux_rand(&msg, &tweaked.to_inner());
+
+    // verify
+    secp.verify_schnorr(
+        &reveal_input_signature,
+        &msg,
+        &tweaked.to_inner().x_only_public_key().0,
+    )
+    .expect("signature is valid");
 
     // Update the witness stack.
     let reveal_input_signature = bitcoin::taproot::Signature {
@@ -311,10 +326,19 @@ pub fn process_inscribe() {
         sighash_type,
     };
 
-    sighasher
+    let mut witness_data: Witness = Witness::new();
+
+    witness_data.push(&reveal_input_signature.to_vec());
+    witness_data.push(&reveal_input.2.to_bytes());
+
+    // add control block
+    witness_data.push(&reveal_input.3.serialize());
+
+    *sighasher
         .witness_mut(reveal_input_index)
-        .unwrap()
-        .push(&reveal_input_signature.to_vec());
+        .ok_or("failed to get witness")
+        .unwrap() = witness_data;
+
 
     let reveal_tx = sighasher.into_transaction();
 
