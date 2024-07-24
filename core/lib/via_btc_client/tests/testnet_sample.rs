@@ -79,7 +79,7 @@ fn reveal_transaction_output_p2tr<C: Verification>(
     let mut encoded_pubkey = PushBytesBuf::with_capacity(serelized_pubkey.len());
     encoded_pubkey.extend_from_slice(&serelized_pubkey).ok();
 
-    let data = b"***Hello From Via Inscriber: try 1***";
+    let data: &[u8; 37] = b"***Hello From Via Inscriber: try 1***";
     println!("data: {}", data.raw_hex());
     // The inscription output with using Taproot approach:
     let taproot_script = ScriptBuilder::new()
@@ -308,15 +308,14 @@ pub fn process_inscribe() {
         .expect("failed to construct sighash");
 
     // Sign the sighash using the secp256k1 library (exported by rust-bitcoin).
-    let tweaked: TweakedKeypair = keypair.tap_tweak(&secp, None);
     let msg = Message::from_digest(reveal_input_sighash.to_byte_array());
-    let reveal_input_signature = secp.sign_schnorr_no_aux_rand(&msg, &tweaked.to_inner());
+    let reveal_input_signature = secp.sign_schnorr_no_aux_rand(&msg, &keypair);
 
     // verify
     secp.verify_schnorr(
         &reveal_input_signature,
         &msg,
-        &tweaked.to_inner().x_only_public_key().0,
+        &internal_key,
     )
     .expect("signature is valid");
 
