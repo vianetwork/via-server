@@ -14,7 +14,6 @@ const DUMMY_UTXO_AMOUNT: Amount = Amount::from_sat(20_000_000);
 const SPEND_AMOUNT: Amount = Amount::from_sat(5_000_000);
 const CHANGE_AMOUNT: Amount = Amount::from_sat(14_999_000); // 1000 sat fee.
 
-
 fn senders_keys<C: Signing>(secp: &Secp256k1<C>) -> Keypair {
     let sk = SecretKey::new(&mut rand::thread_rng());
     Keypair::from_secret_key(secp, &sk)
@@ -30,18 +29,21 @@ fn receivers_address() -> Address {
 fn dummy_unspent_transaction_output<C: Verification>(
     secp: &Secp256k1<C>,
     internal_key: UntweakedPublicKey,
- ) -> (OutPoint, TxOut) {
-     let script_pubkey = ScriptBuf::new_p2tr(secp, internal_key, None);
- 
-     let out_point = OutPoint {
-         txid: Txid::all_zeros(), // Obviously invalid.
-         vout: 0,
-     };
- 
-     let utxo = TxOut { value: DUMMY_UTXO_AMOUNT, script_pubkey };
- 
-     (out_point, utxo)
- }
+) -> (OutPoint, TxOut) {
+    let script_pubkey = ScriptBuf::new_p2tr(secp, internal_key, None);
+
+    let out_point = OutPoint {
+        txid: Txid::all_zeros(), // Obviously invalid.
+        vout: 0,
+    };
+
+    let utxo = TxOut {
+        value: DUMMY_UTXO_AMOUNT,
+        script_pubkey,
+    };
+
+    (out_point, utxo)
+}
 
 fn main() {
     let secp = Secp256k1::new();
@@ -66,7 +68,10 @@ fn main() {
     };
 
     // The spend output is locked to a key controlled by the receiver.
-    let spend = TxOut { value: SPEND_AMOUNT, script_pubkey: address.script_pubkey() };
+    let spend = TxOut {
+        value: SPEND_AMOUNT,
+        script_pubkey: address.script_pubkey(),
+    };
 
     // The change output is locked to a key controlled by us.
     let change = TxOut {
@@ -100,8 +105,14 @@ fn main() {
     let signature = secp.sign_schnorr(&msg, &tweaked.to_inner());
 
     // Update the witness stack.
-    let signature = bitcoin::taproot::Signature { signature, sighash_type };
-    sighasher.witness_mut(input_index).unwrap().push(&signature.to_vec());
+    let signature = bitcoin::taproot::Signature {
+        signature,
+        sighash_type,
+    };
+    sighasher
+        .witness_mut(input_index)
+        .unwrap()
+        .push(&signature.to_vec());
 
     // Get the signed transaction.
     let tx = sighasher.into_transaction();
