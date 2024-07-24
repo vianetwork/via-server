@@ -16,8 +16,8 @@ use bitcoin::{
 };
 use bitcoincore_rpc::RawTx;
 
-const UTXO_AMOUNT: Amount = Amount::from_sat(15_075);
-const CHANGE_AMOUNT: Amount = Amount::from_sat(14_575); // 500 sat fee.
+const UTXO_AMOUNT: Amount = Amount::from_sat(14_575);
+const CHANGE_AMOUNT: Amount = Amount::from_sat(4_000); // 500 sat fee.
 
 fn senders_keys<C: Signing>(secp: &Secp256k1<C>) -> (SecretKey, WPubkeyHash, Keypair) {
     let private_key_wif = "cRz3eG99BvR8VnseYPsGYEiQ8oZCgeHJxKJ3yDXPYEyNKKZHkHdB";
@@ -43,7 +43,7 @@ fn unspent_transaction_output(wpkh: &WPubkeyHash) -> (OutPoint, TxOut) {
     let txid = "d634782c2560b95958b0831609696faadb00bacc8226f147659af8f2ebb34f8b";
     let out_point = OutPoint {
         txid: Txid::from_str(&txid).unwrap(), // Obviously invalid.
-        vout: 1,
+        vout: 0,
     };
 
     let utxo = TxOut {
@@ -57,10 +57,10 @@ fn unspent_transaction_output(wpkh: &WPubkeyHash) -> (OutPoint, TxOut) {
 fn reveal_transaction_output_fee(wpkh: &WPubkeyHash) -> (OutPoint, TxOut) {
     let script_pubkey = ScriptBuf::new_p2wpkh(wpkh);
 
-    let txid = "d634782c2560b95958b0831609696faadb00bacc8226f147659af8f2ebb34f8b";
+    let txid = "9d2d28809deff9dc156126ad9498ba43d383c0f62284c9cce7eff9c65d170b06";
     let out_point = OutPoint {
         txid: Txid::from_str(&txid).unwrap(), // Obviously invalid.
-        vout: 1,
+        vout: 0,
     };
 
     let utxo = TxOut {
@@ -101,11 +101,12 @@ fn reveal_transaction_output_p2tr<C: Verification>(
 
     // Create the Taproot output script
     let taproot_address = Address::p2tr_tweaked(taproot_spend_info.output_key(), Network::Testnet);
+    println!("taproot address: {}", taproot_address);
 
-    let txid = "d634782c2560b95958b0831609696faadb00bacc8226f147659af8f2ebb34f8b";
+    let txid = "9d2d28809deff9dc156126ad9498ba43d383c0f62284c9cce7eff9c65d170b06";
     let out_point = OutPoint {
-        txid: Txid::from_str(&txid).unwrap(), // Obviously invalid.
-        vout: 0,
+        txid: Txid::from_str(&txid).unwrap(), 
+        vout: 1,
     };
 
     let utxo = TxOut {
@@ -227,7 +228,7 @@ pub fn process_inscribe() {
 
     let input = TxIn {
         previous_output: fee_input.0,     // The dummy output we are spending.
-        script_sig: ScriptBuf::default(), // For a p2tr script_sig is empty.
+        script_sig: ScriptBuf::default(),    // For a p2wpkh script_sig is empty.
         sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
         witness: Witness::default(), // Filled in after signing.
     };
@@ -287,13 +288,16 @@ pub fn process_inscribe() {
 
     // **Sign the reveal input**
 
-    let sighash_type = TapSighashType::All;
-    let prevouts = vec![reveal_input.1];
-    let prevouts = Prevouts::All(&prevouts);
+    let sighash_type = TapSighashType::NonePlusAnyoneCanPay;
+    let prevouts = reveal_input.1;
+    let prevouts = Prevouts::One(reveal_input_index, prevouts);
+
 
     let reveal_input_sighash = sighasher
         .taproot_key_spend_signature_hash(reveal_input_index, &prevouts, sighash_type)
         .expect("failed to construct sighash");
+
+        print!("*****Problem is in here*****");
 
 
     // Sign the sighash using the secp256k1 library (exported by rust-bitcoin).
