@@ -226,9 +226,10 @@ pub fn process_inscribe() {
 
     // println!("commit transaction: {:#?}", commit_tx.raw_hex().to_string());
 
-    //**********************************************************************************/
+    //****************************************************************************/
     // start creating reveal transaction
     //**********************************************************************************/
+    
     // The input for the transaction we are constructing.
 
     let fee_input = reveal_transaction_output_fee(&wpkh);
