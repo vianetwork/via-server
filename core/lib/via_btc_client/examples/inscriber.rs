@@ -12,10 +12,10 @@ use anyhow::{Result, Context};
 async fn main () -> Result<()> {
     println!("Hello, world!");
     let mut inscriber = Inscriber::new(
-        "http://34.141.8.110:18332",
+        "url",
         BitcoinNetwork::Testnet,
         NodeAuth::UserPass("via".to_string(), "via".to_string()),
-        "cRz3eG99BvR8VnseYPsGYEiQ8oZCgeHJxKJ3yDXPYEyNKKZHkHdB",
+        "prv",
         None,
     ).await.context("Failed to create Inscriber")?;
 
