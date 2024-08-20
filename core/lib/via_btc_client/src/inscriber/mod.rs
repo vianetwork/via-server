@@ -10,7 +10,8 @@ use bitcoin::{
     transaction, Address, Amount, EcdsaSighashType, OutPoint, ScriptBuf, Sequence, TapLeafHash,
     TapSighashType, Transaction, TxIn, TxOut, Witness,
 };
-use bitcoincore_rpc::{Auth, RawTx};
+pub use bitcoincore_rpc::Auth as NodeAuth;
+use bitcoincore_rpc::RawTx;
 use secp256k1::Message;
 
 use crate::{
@@ -53,7 +54,7 @@ const REVEAL_TX_P2WPKH_INPUT_COUNT: u32 = 1;
 
 const BROADCAST_RETRY_COUNT: u32 = 3;
 
-struct Inscriber {
+pub struct Inscriber {
     client: Box<dyn BitcoinOps>,
     signer: Box<dyn BitcoinSigner>,
     context: InscriberContext,
@@ -64,19 +65,26 @@ impl Inscriber {
     pub async fn new(
         rpc_url: &str,
         network: BitcoinNetwork,
-        auth: Auth,
+        auth: NodeAuth,
         signer_private_key: &str,
         persisted_ctx: Option<types::InscriberContext>,
     ) -> Result<Self> {
         let client = Box::new(BitcoinClient::new(rpc_url, network, auth).await?);
         let signer = Box::new(KeyManager::new(signer_private_key, network)?);
-        let context = persisted_ctx.unwrap_or_else(types::InscriberContext::new);
+        let context = persisted_ctx.unwrap_or_default();
 
         Ok(Self {
             client,
             signer,
             context,
         })
+    }
+
+    pub async fn get_balance(&self) -> Result<u128> {
+        let address_ref = &self.signer.get_p2wpkh_address()?;
+        let balance = self.client.get_balance(address_ref).await?;
+
+        Ok(balance)
     }
 
     // the inscribe should provide report for upper layer to give them information for updates on the transactions

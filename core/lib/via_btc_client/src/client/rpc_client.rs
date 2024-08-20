@@ -3,11 +3,12 @@ use bitcoin::{Address, Block, BlockHash, OutPoint, Transaction, Txid};
 pub use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::{
     bitcoincore_rpc_json::EstimateMode,
-    json::{EstimateSmartFeeResult, ScanTxOutRequest},
+    json::{EstimateSmartFeeResult, ImportDescriptors, ScanTxOutRequest, Timestamp},
     Client, RpcApi,
 };
 
 use crate::{traits::BitcoinRpc, types::BitcoinRpcResult};
+
 
 pub struct BitcoinRpcClient {
     client: Client,
@@ -25,18 +26,87 @@ impl BitcoinRpcClient {
 #[async_trait]
 impl BitcoinRpc for BitcoinRpcClient {
     async fn get_balance(&self, address: &Address) -> BitcoinRpcResult<u64> {
-        let descriptor = format!("addr({})", address);
-        let request = vec![ScanTxOutRequest::Single(descriptor)];
+        // let descriptor = format!("addr({})", address);
+        // let request = vec![ScanTxOutRequest::Single(descriptor)];
 
-        let result = self.client.scan_tx_out_set_blocking(&request)?;
+        // let result = self.client.scan_tx_out_set_blocking(&request)?;
 
-        Ok(result.total_amount.to_sat())
+        let result = self.client.list_unspent(
+            Some(1), // minconf
+            None, // maxconf
+            Some(&[address]), // addresses
+            None, // include_unsafe
+            None, // query_options
+        )?;
+
+        let total_amount: u64 = result
+            .into_iter()
+            .map(|unspent| unspent.amount.to_sat())
+            .sum();
+
+        Ok(total_amount)
     }
 
     async fn send_raw_transaction(&self, tx_hex: &str) -> BitcoinRpcResult<Txid> {
         self.client
             .send_raw_transaction(tx_hex)
             .map_err(|e| e.into())
+    }
+
+    async fn import_address_to_node(&self, address: &Address) -> BitcoinRpcResult<()> {
+        // check if the wallet with this name is exist in node or not. "watchonlywallet"
+        // if not exist, create a new wallet with this name
+        // import address to this wallet
+        // call rescanblockchain on node
+
+        let wallet_name = "watchonlywallet";
+        let disable_private_keys = true;
+
+        let wallets = self.client.list_wallets()?;
+
+        let address_descriptor = format!("addr({})", address);
+        let address_descriptor = self.client.get_descriptor_info(&address_descriptor)?;
+
+        if !wallets.contains(&wallet_name.to_string()) {
+            self.client.create_wallet(wallet_name, Some(disable_private_keys), None, None, None)?;
+        } 
+
+        let req = ImportDescriptors {
+            descriptor: address_descriptor.descriptor,
+            timestamp: Timestamp::Now,
+            range: None,
+            label: None,
+            internal: None,
+            active: None,
+            next_index: None,
+        };
+        
+        self.client.import_descriptors(req)?;
+
+        Ok(())
+    }
+
+    async fn get_utxo_with_node_watch_only_wallet(&self, address: &Address) -> BitcoinRpcResult<Vec<OutPoint>> {
+        let descriptor = format!("addr({})", address);
+
+        let result = self.client.list_unspent(
+            Some(1), // minconf
+            None, // maxconf
+            Some(&[address]), // addresses
+            None, // include_unsafe
+            None, // query_options
+        )?;
+
+        let unspent: Vec<OutPoint> = result
+            .into_iter()
+            .map(|unspent| OutPoint {
+                txid: unspent.txid,
+                vout: unspent.vout,
+            })
+            .collect();
+
+        Ok(unspent)
+
     }
 
     async fn list_unspent(&self, address: &Address) -> BitcoinRpcResult<Vec<OutPoint>> {

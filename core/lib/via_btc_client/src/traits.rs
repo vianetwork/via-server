@@ -51,6 +51,8 @@ pub trait BitcoinRpc: Send + Sync {
     async fn get_balance(&self, address: &Address) -> BitcoinRpcResult<u64>;
     async fn send_raw_transaction(&self, tx_hex: &str) -> BitcoinRpcResult<Txid>;
     async fn list_unspent(&self, address: &Address) -> BitcoinRpcResult<Vec<OutPoint>>;
+    async fn import_address_to_node(&self, address: &Address) -> BitcoinRpcResult<()>;
+    async fn get_utxo_with_node_watch_only_wallet(&self, address: &Address) -> BitcoinRpcResult<Vec<OutPoint>>;
     async fn get_transaction(&self, tx_id: &Txid) -> BitcoinRpcResult<Transaction>;
     async fn get_block_count(&self) -> BitcoinRpcResult<u64>;
     async fn get_block_by_height(&self, block_height: u128) -> BitcoinRpcResult<Block>;

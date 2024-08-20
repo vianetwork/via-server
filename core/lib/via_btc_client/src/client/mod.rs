@@ -44,7 +44,9 @@ impl BitcoinOps for BitcoinClient {
     }
 
     async fn fetch_utxos(&self, address: &Address) -> BitcoinClientResult<Vec<(OutPoint, TxOut)>> {
-        let outpoints = self.rpc.list_unspent(address).await?;
+        // let outpoints = self.rpc.list_unspent(address).await?;
+
+        let outpoints = self.rpc.get_utxo_with_node_watch_only_wallet(address).await?;
 
         let mut utxos: Vec<(OutPoint, TxOut)> = vec![];
 

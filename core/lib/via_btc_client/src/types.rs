@@ -175,6 +175,12 @@ impl InscriberContext {
     }
 }
 
+impl Default for InscriberContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[allow(unused)]
 #[derive(Clone, Debug)]
 pub struct InscriberOutput {
