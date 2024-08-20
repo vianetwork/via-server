@@ -110,8 +110,11 @@ mod tests {
     #[tokio::test]
     async fn test_bitcoin_regtest() {
         let regtest = BitcoinRegtest::new().expect("Failed to create BitcoinRegtest");
-        let rpc = BitcoinRpcClient::new(&regtest.get_url(), Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()))
-            .expect("Failed create rpc client");
+        let rpc = BitcoinRpcClient::new(
+            &regtest.get_url(),
+            Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()),
+        )
+        .expect("Failed create rpc client");
 
         let block_count = rpc
             .get_block_count()

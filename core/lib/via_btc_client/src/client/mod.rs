@@ -46,7 +46,10 @@ impl BitcoinOps for BitcoinClient {
     async fn fetch_utxos(&self, address: &Address) -> BitcoinClientResult<Vec<(OutPoint, TxOut)>> {
         // let outpoints = self.rpc.list_unspent(address).await?;
 
-        let outpoints = self.rpc.get_utxo_with_node_watch_only_wallet(address).await?;
+        let outpoints = self
+            .rpc
+            .get_utxo_with_node_watch_only_wallet(address)
+            .await?;
 
         let mut utxos: Vec<(OutPoint, TxOut)> = vec![];
 
@@ -91,7 +94,17 @@ impl BitcoinOps for BitcoinClient {
             .await?;
 
         match estimation.fee_rate {
-            Some(fee_rate) => Ok(fee_rate.to_sat()),
+            Some(fee_rate) => {
+                // convert btc/kb to sat/byte
+                let fee_rate_sat_kb = fee_rate.to_sat();
+                let fee_rate_sat_byte = fee_rate_sat_kb.checked_div(1000);
+                match fee_rate_sat_byte {
+                    Some(fee_rate_sat_byte) => Ok(fee_rate_sat_byte),
+                    None => Err(BitcoinError::FeeEstimationFailed(
+                        "Invalid fee rate".to_string(),
+                    )),
+                }
+            }
             None => {
                 let err = match estimation.errors {
                     Some(errors) => errors.join(", "),
@@ -121,9 +134,13 @@ mod tests {
     #[tokio::test]
     async fn test_new() {
         let context = BitcoinRegtest::new().expect("Failed to create BitcoinRegtest");
-        let client = BitcoinClient::new(&context.get_url(), Network::Regtest, Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()))
-            .await
-            .expect("Failed to create BitcoinClient");
+        let client = BitcoinClient::new(
+            &context.get_url(),
+            Network::Regtest,
+            Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()),
+        )
+        .await
+        .expect("Failed to create BitcoinClient");
 
         assert_eq!(client.network, Network::Regtest);
     }
@@ -165,9 +182,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_block_height() {
         let context = BitcoinRegtest::new().expect("Failed to create BitcoinRegtest");
-        let client = BitcoinClient::new(&context.get_url(), Network::Regtest, Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()))
-            .await
-            .expect("Failed to create BitcoinClient");
+        let client = BitcoinClient::new(
+            &context.get_url(),
+            Network::Regtest,
+            Auth::UserPass("rpcuser".to_string(), "rpcpassword".to_string()),
+        )
+        .await
+        .expect("Failed to create BitcoinClient");
 
         let block_height = client
             .fetch_block_height()

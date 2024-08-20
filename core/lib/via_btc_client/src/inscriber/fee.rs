@@ -61,7 +61,7 @@ impl InscriberFeeCalculator {
         // https://en.bitcoin.it/wiki/Protocol_documentation#Common_structures
         // https://btcinformation.org/en/developer-reference#p2p-network
 
-        if p2tr_inputs_count == p2tr_witness_sizes.len() as u32 {
+        if p2tr_inputs_count != p2tr_witness_sizes.len() as u32 {
             return Err(anyhow::anyhow!("Invalid witness sizes count"));
         }
 
@@ -105,6 +105,10 @@ impl InscriberFeeCalculator {
         let fee = transaction_size as u64 * fee_rate;
 
         let fee = Amount::from_sat(fee);
+
+        println!("Estimated fee: {}", fee);
+        println!("Estimated transaction size: {}", transaction_size);
+        println!("Fee rate: {}", fee_rate);
 
         Ok(fee)
     }

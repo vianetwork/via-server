@@ -8,7 +8,7 @@ use bitcoin::{
     sighash::{Prevouts, SighashCache},
     taproot::{ControlBlock, LeafVersion},
     transaction, Address, Amount, EcdsaSighashType, OutPoint, ScriptBuf, Sequence, TapLeafHash,
-    TapSighashType, Transaction, TxIn, TxOut, Witness,
+    TapSighashType, Transaction, TxIn, TxOut, Txid, Witness,
 };
 pub use bitcoincore_rpc::Auth as NodeAuth;
 use bitcoincore_rpc::RawTx;
@@ -94,7 +94,7 @@ impl Inscriber {
     //    "reveal_tx": {},
     //    "tx_incldued_in_block": []
     // }
-    pub async fn inscribe(&mut self, input: types::InscriptionMessage) -> Result<()> {
+    pub async fn inscribe(&mut self, input: types::InscriptionMessage) -> Result<Txid> {
         self.sync_context_with_blockchain().await?;
 
         let secp_ref = &self.signer.get_secp_ref();
@@ -138,6 +138,8 @@ impl Inscriber {
             return Err(anyhow::anyhow!("Failed to broadcast inscription"));
         }
 
+        let reveal_tx_id = final_reveal_tx.txid;
+
         self.insert_inscription_to_context(
             input,
             final_commit_tx,
@@ -147,7 +149,7 @@ impl Inscriber {
             commit_tx_input_info,
         )?;
 
-        Ok(())
+        Ok(reveal_tx_id)
     }
 
     async fn sync_context_with_blockchain(&mut self) -> Result<()> {
@@ -319,8 +321,19 @@ impl Inscriber {
             fee_rate,
         )?;
 
+        if tx_input_data.unlocked_value < fee_amount {
+            return Err(anyhow::anyhow!(
+                "Insufficient balance, unable to pay fee. required: {}, available: {}",
+                fee_amount,
+                tx_input_data.unlocked_value
+            ));
+        }
+
+        let commit_tx_change_output_value = tx_input_data.unlocked_value.checked_sub(fee_amount)
+            .ok_or_else(|| anyhow::anyhow!("Failed to calculate change output value"))?;
+        
         let commit_tx_change_output = TxOut {
-            value: tx_input_data.unlocked_value - fee_amount,
+            value: commit_tx_change_output_value,
             script_pubkey: self.signer.get_p2wpkh_script_pubkey().clone(),
         };
 
@@ -425,7 +438,7 @@ impl Inscriber {
         let control_block = inscription_data
             .taproot_spend_info
             .control_block(&(
-                inscription_data.script_pubkey.clone(),
+                inscription_data.inscription_script.clone(),
                 LeafVersion::TapScript,
             ))
             .ok_or_else(|| anyhow::anyhow!("Failed to get control block"))?;
@@ -499,7 +512,19 @@ impl Inscriber {
             fee_rate,
         )?;
 
-        let reveal_change_amount = tx_input_data.unlock_value - fee_amount;
+
+        if tx_input_data.unlock_value < fee_amount {
+            return Err(anyhow::anyhow!(
+                "Insufficient balance, unable to pay fee. required: {}, available: {}",
+                fee_amount,
+                tx_input_data.unlock_value
+            ));
+        }
+
+
+
+        let reveal_change_amount = tx_input_data.unlock_value.checked_sub(fee_amount)
+            .ok_or_else(|| anyhow::anyhow!("Failed to calculate change output value"))?;
 
         let reveal_tx_change_output = TxOut {
             value: reveal_change_amount,
