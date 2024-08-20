@@ -47,6 +47,9 @@ const P2WPKH_OUTPUT_BASE_SIZE: usize = 34;
 // 8 + 1 + 34 = 43
 const P2TR_OUTPUT_BASE_SIZE: usize = 43;
 
+
+const VIRTUAL_SIZE_DIVIDER: usize = 4;
+
 pub struct InscriberFeeCalculator {}
 
 impl InscriberFeeCalculator {
@@ -70,7 +73,12 @@ impl InscriberFeeCalculator {
         let mut p2tr_input_size = 0;
 
         for witness_size in p2tr_witness_sizes {
-            p2tr_input_size += P2TR_INPUT_BASE_SIZE + witness_size;
+            let witness_virtual_size = witness_size.checked_div(VIRTUAL_SIZE_DIVIDER).ok_or_else(|| {
+                anyhow::anyhow!("Failed to calculate witness virtual size")
+            })?;
+
+
+            p2tr_input_size += P2TR_INPUT_BASE_SIZE + witness_virtual_size + 1;
         }
 
         let p2wpkh_output_size = P2WPKH_OUTPUT_BASE_SIZE * p2wpkh_outputs_count as usize;
@@ -103,12 +111,8 @@ impl InscriberFeeCalculator {
         )?;
 
         let fee = transaction_size as u64 * fee_rate;
-
         let fee = Amount::from_sat(fee);
 
-        println!("Estimated fee: {}", fee);
-        println!("Estimated transaction size: {}", transaction_size);
-        println!("Fee rate: {}", fee_rate);
 
         Ok(fee)
     }
