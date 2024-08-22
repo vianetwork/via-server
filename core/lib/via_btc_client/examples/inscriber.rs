@@ -15,7 +15,7 @@ async fn main() -> Result<()> {
 
     let mut inscriber_instance = Inscriber::new(
         &url,
-        BitcoinNetwork::Testnet,
+        BitcoinNetwork::Regtest,
         NodeAuth::UserPass("via".to_string(), "via".to_string()),
         &prv,
         None,

@@ -658,9 +658,16 @@ impl Inscriber {
                 .broadcast_signed_transaction(&commit_tx_hex)
                 .await;
 
-            if res.is_ok() {
-                commit_broadcasted = true;
-                break;
+            match res {
+                Err(e) => {
+                    println!("Failed to broadcast commit tx: {}", e);
+                }
+                Ok(txid) => {
+                    if txid == commit.txid {
+                        commit_broadcasted = true;
+                        break;
+                    }
+                }
             }
         }
 
@@ -671,10 +678,18 @@ impl Inscriber {
                 .broadcast_signed_transaction(&reveal_tx_hex)
                 .await;
 
-            if res.is_ok() {
-                reveal_broadcasted = true;
-                break;
+            match res {
+                Err(e) => {
+                    println!("Failed to broadcast reveal tx: {}", e);
+                }
+                Ok(txid) => {
+                    if txid == reveal.txid {
+                        reveal_broadcasted = true;
+                        break;
+                    }
+                }
             }
+
         }
 
         Ok(commit_broadcasted && reveal_broadcasted)
